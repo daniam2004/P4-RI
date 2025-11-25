@@ -1,5 +1,12 @@
 import re
 import unicodedata
+from nltk.corpus import stopwords
+import nltk
+
+try:
+    stopwords.words("spanish")
+except LookupError:
+    nltk.download("stopwords")
 
 def lexical_analysis(text: str) -> str:
     # Análisis léxico
@@ -28,3 +35,27 @@ def tokenize(text: str) -> list:
     tokens = text.split()
 
     return tokens
+
+def remove_stopwords(tokens: list) -> list:
+    # Eliminar palabras vacías
+    if not isinstance(tokens, list):
+        return[]
+    
+    stop_words = set(stopwords.words("spanish"))
+    clean_tokens = [t for t in tokens if t not in stop_words]
+
+    return clean_tokens
+
+def meaningful_tokens(tokens: list) -> list:
+    # Filtramos tokens con significado
+    if not isinstance(tokens, list):
+        return[]
+    
+    clean = []
+    for token in tokens:
+        if len(token) <= 2:
+            continue
+        
+        clean.append(token)
+    
+    return clean
