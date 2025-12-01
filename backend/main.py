@@ -5,6 +5,7 @@ from processing.processing import remove_stopwords as remove_stopwords_fn
 from processing.processing import meaningful_tokens as meaningful_tokens_fn
 from processing.processing import stem_tokens as stem_tokens_fn
 from indexer.indexer import build_vocabulary as build_vocabulary_fn
+from indexer.indexer import compute_tf as compute_tf_fn
 
 app = FastAPI()
 @app.get("/")
@@ -40,3 +41,8 @@ def lemmatize_endpoint(tokens: list = Body(...)):
 def vocabulary_endpoint(documents: list = Body(...)):
     vocab = build_vocabulary_fn(documents)
     return {"vocabulary": vocab}
+
+@app.post("/tf")
+def tf_endpoint(document_tokens: list = Body(...), vocabulary: list = Body(...)):
+    tf = compute_tf_fn(document_tokens, vocabulary)
+    return {"tf": tf}
