@@ -1,6 +1,7 @@
 import re
 import unicodedata
 from nltk.corpus import stopwords
+from nltk.stem.snowball import SnowballStemmer
 import nltk
 
 try:
@@ -59,3 +60,12 @@ def meaningful_tokens(tokens: list) -> list:
         clean.append(token)
     
     return clean
+
+stemmer = SnowballStemmer("spanish")
+def stem_tokens(tokens: list) -> list:
+    if not isinstance(tokens, list):
+        return []
+    
+    stemmed = [stemmer.stem(token) for token in tokens]
+
+    return stemmed

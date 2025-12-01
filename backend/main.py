@@ -3,6 +3,8 @@ from processing.processing import lexical_analysis as lexical_fn
 from processing.processing import tokenize as tokenize_fn
 from processing.processing import remove_stopwords as remove_stopwords_fn
 from processing.processing import meaningful_tokens as meaningful_tokens_fn
+from processing.processing import stem_tokens as stem_tokens_fn
+from indexer.indexer import build_vocabulary as build_vocabulary_fn
 
 app = FastAPI()
 @app.get("/")
@@ -28,3 +30,13 @@ def remove_stopwords_endpoint(tokens: list = Body(...)):
 def meaningful_tokens_endpoint(tokens: list = Body(...)):
     clean = meaningful_tokens_fn(tokens)
     return {"meaningful_tokens": clean}
+
+@app.post("/lemmatize")
+def lemmatize_endpoint(tokens: list = Body(...)):
+    stemmed = stem_tokens_fn(tokens)
+    return {"stemmed_tokens": stemmed}
+
+@app.post("/vocabulary")
+def vocabulary_endpoint(documents: list = Body(...)):
+    vocab = build_vocabulary_fn(documents)
+    return {"vocabulary": vocab}
