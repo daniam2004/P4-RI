@@ -11,6 +11,7 @@ from indexer.indexer import select_relevant_terms as select_relevant_terms_fn
 from indexer.indexer import build_inverted_index as build_inverted_index_fn
 from indexer.indexer import vectorize_document as vectorize_document_fn
 from indexer.indexer import cosine_similarity as cosine_similarity_fn
+from indexer.indexer import search_query as search_query_fn
 
 app = FastAPI()
 @app.get("/")
@@ -84,3 +85,9 @@ def vectorize_endpoint(tfidf: dict = Body(...), vocabulary: list = Body(...)):
 def similarity_endpoint(vec1: list = Body(...), vec2: list = Body(...)):
     similarity = cosine_similarity_fn(vec1, vec2)
     return {"similarity": similarity}
+
+@app.post("/search")
+def search_endpoint(query_vector: list = Body(...), document_vectors: dict = Body(...)):
+    results = search_query_fn(query_vector, document_vectors)
+    return {"search_results": results}
+

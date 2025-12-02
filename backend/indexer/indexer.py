@@ -145,3 +145,17 @@ def cosine_similarity(vec1: list, vec2: list) -> float:
     
     return dot / (norm1 * norm2)
 
+def search_query(query_vector: list, document_vectors: dict) -> dict:
+    if not isinstance(query_vector, list) or not isinstance(document_vectors, dict):
+        return {}
+    
+    results = {}
+
+    for doc_id, doc_vector in document_vectors.items():
+        sim = cosine_similarity(query_vector, doc_vector)
+        results[doc_id] = sim
+
+    sorted_results = dict(sorted(results.items(), key = lambda x: x[1], reverse = True))
+
+    return sorted_results
+
