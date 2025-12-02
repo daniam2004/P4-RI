@@ -10,6 +10,7 @@ from indexer.indexer import compute_idf as compute_idf_fn, compute_tfidf as comp
 from indexer.indexer import select_relevant_terms as select_relevant_terms_fn
 from indexer.indexer import build_inverted_index as build_inverted_index_fn
 from indexer.indexer import vectorize_document as vectorize_document_fn
+from indexer.indexer import cosine_similarity as cosine_similarity_fn
 
 app = FastAPI()
 @app.get("/")
@@ -78,3 +79,8 @@ def inverted_index_endpoint(documents: list = Body(...)):
 def vectorize_endpoint(tfidf: dict = Body(...), vocabulary: list = Body(...)):
     vector = vectorize_document_fn(tfidf, vocabulary)
     return {"vector": vector}
+
+@app.post("/similarity")
+def similarity_endpoint(vec1: list = Body(...), vec2: list = Body(...)):
+    similarity = cosine_similarity_fn(vec1, vec2)
+    return {"similarity": similarity}
