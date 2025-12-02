@@ -117,3 +117,14 @@ def build_inverted_index(documents: list) -> dict:
     
     return inverted
 
+def vectorize_document(tfidf: dict, vocabulary: list) -> list:
+    if not isinstance(tfidf, dict) or not isinstance(vocabulary, list):
+        return []
+    
+    vector = []
+
+    for term in vocabulary:
+        value = tfidf.get(term, 0.0)
+        vector.append(value)
+    
+    return vector

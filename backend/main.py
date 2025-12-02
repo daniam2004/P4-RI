@@ -9,6 +9,7 @@ from indexer.indexer import compute_tf as compute_tf_fn
 from indexer.indexer import compute_idf as compute_idf_fn, compute_tfidf as compute_tfidf_fn
 from indexer.indexer import select_relevant_terms as select_relevant_terms_fn
 from indexer.indexer import build_inverted_index as build_inverted_index_fn
+from indexer.indexer import vectorize_document as vectorize_document_fn
 
 app = FastAPI()
 @app.get("/")
@@ -72,3 +73,8 @@ def relevant_terms_endpoint(tfidf: dict = Body(...), k: int = 5):
 def inverted_index_endpoint(documents: list = Body(...)):
     index = build_inverted_index_fn(documents)
     return {"inverted_index": index}
+
+@app.post("/vectorize")
+def vectorize_endpoint(tfidf: dict = Body(...), vocabulary: list = Body(...)):
+    vector = vectorize_document_fn(tfidf, vocabulary)
+    return {"vector": vector}
