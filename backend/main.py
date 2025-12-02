@@ -7,7 +7,8 @@ from processing.processing import stem_tokens as stem_tokens_fn
 from indexer.indexer import build_vocabulary as build_vocabulary_fn
 from indexer.indexer import compute_tf as compute_tf_fn
 from indexer.indexer import compute_idf as compute_idf_fn, compute_tfidf as compute_tfidf_fn
-
+from indexer.indexer import select_relevant_terms as select_relevant_terms_fn
+from indexer.indexer import build_inverted_index as build_inverted_index_fn
 
 app = FastAPI()
 @app.get("/")
@@ -61,3 +62,13 @@ def tfidf_endpoint(document_tokens: list = Body(...), vocabulary: list = Body(..
     
     tfidf = compute_tfidf_fn(document_tokens, vocabulary, idf)
     return {"tfidf": tfidf}
+
+@app.post("/relevant_terms")
+def relevant_terms_endpoint(tfidf: dict = Body(...), k: int = 5):
+    selected = select_relevant_terms_fn(tfidf, k)
+    return {"relevant_terms": selected}
+
+@app.post("/inverted_index")
+def inverted_index_endpoint(documents: list = Body(...)):
+    index = build_inverted_index_fn(documents)
+    return {"inverted_index": index}

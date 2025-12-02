@@ -14,7 +14,6 @@ def build_vocabulary(list_of_tokens_lists: list) -> list:
 
     return sorted(list(vocabulary))
 
-
 def compute_tf(tokens: list, vocabulary: list) -> dict:
     if not isinstance(tokens, list) or not isinstance(vocabulary, list):
         return {}
@@ -30,7 +29,6 @@ def compute_tf(tokens: list, vocabulary: list) -> dict:
         tf[term] = count / total_tokens
     
     return tf
-
 
 def compute_idf(list_of_tokens_lists: list, vocabulary: list) -> dict:
     """
@@ -62,7 +60,6 @@ def compute_idf(list_of_tokens_lists: list, vocabulary: list) -> dict:
 
     return idf
 
-
 def compute_tfidf(tokens: list, vocabulary: list, idf: dict) -> dict:
     if not isinstance(tokens, list) or not isinstance(vocabulary, list) or not isinstance(idf, dict):
         return {}
@@ -86,3 +83,37 @@ def compute_tfidf(tokens: list, vocabulary: list, idf: dict) -> dict:
         tfidf[term] = tf * idf_val
 
     return tfidf
+
+def select_relevant_terms(tfidf: dict, k: int = 5) -> list:
+    if not isinstance(tfidf, dict):
+        return []
+
+    sorted_terms = sorted(tfidf.items(), key = lambda x: x[1], reverse = True)
+
+    top_terms = [term for term, score in sorted_terms[:k]]
+
+    return top_terms
+
+def build_inverted_index(documents: list) -> dict:
+    if not isinstance(documents, list):
+        return {}
+    
+    inverted = {}
+
+    for doc in documents:
+        if not isinstance(doc, dict):
+            continue
+
+        doc_id = doc.get("id")
+        tfidf_dict = doc.get("tfidf")
+
+        if not isinstance(doc_id, str) or not isinstance(tfidf_dict, dict):
+            continue
+
+        for term, weight in tfidf_dict.items():
+            if term not in inverted:
+                inverted[term] = {}
+            inverted[term][doc_id] = weight
+    
+    return inverted
+
