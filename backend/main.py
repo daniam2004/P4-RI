@@ -6,6 +6,8 @@ from processing.processing import meaningful_tokens as meaningful_tokens_fn
 from processing.processing import stem_tokens as stem_tokens_fn
 from indexer.indexer import build_vocabulary as build_vocabulary_fn
 from indexer.indexer import compute_tf as compute_tf_fn
+from indexer.indexer import compute_idf as compute_idf_fn, compute_tfidf as compute_tfidf_fn
+
 
 app = FastAPI()
 @app.get("/")
@@ -46,3 +48,16 @@ def vocabulary_endpoint(documents: list = Body(...)):
 def tf_endpoint(document_tokens: list = Body(...), vocabulary: list = Body(...)):
     tf = compute_tf_fn(document_tokens, vocabulary)
     return {"tf": tf}
+
+@app.post("/idf")
+def idf_endpoint(documents: list = Body(...), vocabulary: list = Body(...)):
+    idf = compute_idf_fn(documents, vocabulary)
+    return {"idf": idf}
+
+@app.post("/tfidf")
+def tfidf_endpoint(document_tokens: list = Body(...), vocabulary: list = Body(...), idf: dict = Body(None)):
+    if idf is None:
+        return {"error": "Se requiere un diccionario IDF"}
+    
+    tfidf = compute_tfidf_fn(document_tokens, vocabulary, idf)
+    return {"tfidf": tfidf}
