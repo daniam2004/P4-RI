@@ -91,3 +91,81 @@ def search_endpoint(query_vector: list = Body(...), document_vectors: dict = Bod
     results = search_query_fn(query_vector, document_vectors)
     return {"search_results": results}
 
+@app.post("/full_search")
+def full_search_endpoint(query: str = Body(...), documents: list = Body(...)):
+    
+    # Procesar consulta
+    q_clean = lexical_fn(query)
+    q_tokens = tokenize_fn(q_clean)
+    q_tokens = remove_stopwords_fn(q_tokens)
+    q_tokens = meaningful_tokens_fn(q_tokens)
+
+    # Procesar documentos
+    processed_docs = []
+    for doc in documents:
+        doc_id = doc.get("id")
+        tokens = doc.get("tokens", [])
+
+        if not isinstance(doc_id, str) or not isinstance(tokens, list):
+            continue
+
+        tokens = [t.lower() for t in tokens]
+        tokens = remove_stopwords_fn(tokens)
+        tokens = meaningful_tokens_fn(tokens)
+        tokens = stem_tokens_fn(tokens)
+
+        processed_docs.append({
+            "id": doc_id,
+            "tokens": tokens
+        })
+    
+    # Construir vocabulario
+    vocab = set(q_tokens)
+    for doc in processed_docs:
+        vocab.update(doc["tokens"])
+    vocab = sorted(list(vocab))
+
+    # TF documentos
+    docs_tf = {
+        doc["id"]: compute_tf_fn(doc["tokens"], vocab)
+        for doc in processed_docs
+    }
+
+    # TF consulta
+    q_tf = compute_tf_fn(q_tokens, vocab)
+
+    # IDF global
+    all_token_lists = [doc["tokens"] for doc in processed_docs]
+    all_token_lists.append(q_tokens)
+    idf = compute_idf_fn(all_token_lists, vocab)
+
+    # TF-IDF documentos
+    docs_tfidf = {
+        doc_id: compute_tfidf_fn(tf, vocab, idf)
+        for doc_id, tf in docs_tf.items()
+    }
+
+    # TF-IDF consulta
+    q_tfidf = compute_tfidf_fn(q_tf, vocab, idf)
+
+    # Vectorizar
+    docs_vectors = {
+        doc_id: vectorize_document_fn(tfidf, vocab)
+        for doc_id, tfidf in docs_tfidf.items()
+    }
+    q_vector = vectorize_document_fn(q_tfidf, vocab)
+
+    # Similitud
+    ranking = {
+        doc_id: cosine_similarity_fn(q_vector, vec)
+        for doc_id, vec in docs_vectors.items()
+    }
+
+    # Ordenar resultados
+    ranking = dict(sorted(ranking.items(), key = lambda x: x[1], reverse = True))
+
+    return {
+        "query_processed": q_tokens,
+        "vocabulary": vocab,
+        "ranking": ranking
+    }
