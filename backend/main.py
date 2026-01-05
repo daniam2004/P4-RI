@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Body
+import re
 from processing.processing import lexical_analysis as lexical_fn
 from processing.processing import tokenize as tokenize_fn
 from processing.processing import remove_stopwords as remove_stopwords_fn
@@ -12,8 +13,89 @@ from indexer.indexer import build_inverted_index as build_inverted_index_fn
 from indexer.indexer import vectorize_document as vectorize_document_fn
 from indexer.indexer import cosine_similarity as cosine_similarity_fn
 from indexer.indexer import search_query as search_query_fn
+from crawler.crawler import load_docs as load_docs_fn
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from crawler.crawler import load_docs
+from crawler.crawler import (
+    download_gutenberg_docs,
+    download_wikipedia_docs,
+    download_wikipedia_docs_html
+)
+from processing.processing import (
+    lexical_analysis,
+    tokenize,
+    remove_stopwords,
+    meaningful_tokens,
+    stem_tokens
+)
+from indexer.indexer import (
+    build_vocabulary,
+    compute_idf,
+    compute_tfidf,
+    vectorize_document,
+    cosine_similarity
+)
+
 
 app = FastAPI()
+CORPUS_DOCUMENTS = []
+CORPUS_TOKENS = []
+VOCABULARY = []
+IDF = {}
+DOCUMENT_VECTORS = {}
+
+def initialize_corpus_index():
+    global CORPUS_DOCUMENTS, CORPUS_TOKENS, VOCABULARY, IDF, DOCUMENT_VECTORS
+
+    print("Inicializando índice global del corpus...")
+
+    # Cargar documentos
+    CORPUS_DOCUMENTS = load_docs()
+
+    if not CORPUS_DOCUMENTS:
+        print("No hay documentos para indexar.")
+        return
+    
+    # Procesarmiento lingüístico
+    CORPUS_TOKENS = []
+    for doc in CORPUS_DOCUMENTS:
+        text = doc["text"]
+
+        text = lexical_analysis(text)
+        tokens = tokenize(text)
+        tokens = remove_stopwords(tokens)
+        tokens = meaningful_tokens(tokens)
+        tokens = stem_tokens(tokens)
+
+        CORPUS_TOKENS.append(tokens)
+
+    # Vocabulario global
+    VOCABULARY = build_vocabulary(CORPUS_TOKENS)
+
+    # IDF global
+    IDF = compute_idf(CORPUS_TOKENS, VOCABULARY)
+
+    # Vectorizar documentos
+    DOCUMENT_VECTORS = {}
+    for doc, tokens in zip(CORPUS_DOCUMENTS, CORPUS_TOKENS):
+        tfidf = compute_tfidf(tokens, VOCABULARY, IDF)
+        vector = vectorize_document(tfidf, VOCABULARY)
+        DOCUMENT_VECTORS[doc["id"]] = vector
+    
+    print("Índice global del corpus inicializado.")
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Permitir todas las apps (React)
+    allow_credentials=True,
+    allow_methods=["*"],  # Permitir POST, GET, OPTIONS...
+    allow_headers=["*"],
+)
+
+initialize_corpus_index()
+
 @app.get("/")
 def hello():
     return {"message": "Hola mundo, desde FastAPI"}
@@ -91,81 +173,171 @@ def search_endpoint(query_vector: list = Body(...), document_vectors: dict = Bod
     results = search_query_fn(query_vector, document_vectors)
     return {"search_results": results}
 
-@app.post("/full_search")
-def full_search_endpoint(query: str = Body(...), documents: list = Body(...)):
+def remove_gutenberg_header(text: str) -> str:
+    lower = text.lower()
+
+    patterns = [
+        r"\*\*\*\s*start of.*?\*\*\*",
+        r"start of the project gutenberg ebook",
+        r"start of this project gutenberg",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, lower, re.DOTALL)
+        if match:
+            return text[match.end():]
     
-    # Procesar consulta
+    return text[5000:]
+
+class SearchRequest(BaseModel):
+    query: str
+    k: int = 5
+
+def split_into_paragraphs(text: str) -> list:
+    paragraphs = [
+        p.strip()
+        for p in text.split("\n")
+        if len(p.strip()) > 50
+    ]
+    return paragraphs
+
+
+def extract_snippet_phrase(text: str, query_phrase: str) -> str:
+    if not text or not query_phrase:
+        return ""
+    
+    clean_text = remove_gutenberg_header(text)
+    paragraphs = split_into_paragraphs(clean_text)
+
+    phrase_lower = query_phrase.lower()
+
+    for paragraph in paragraphs:
+        if phrase_lower in paragraph.lower():
+            return paragraph.replace("\n", " ").strip()
+        
+    return ""
+
+def extract_snippet_tokens(text: str, tokens: list) -> str:
+    if not text or not tokens:
+        return ""
+    
+    clean_text = remove_gutenberg_header(text)
+    paragraphs = split_into_paragraphs(clean_text)
+
+    for paragraph in paragraphs:
+        p_lower = paragraph.lower()
+        for token in tokens:
+            if token in p_lower:
+                return paragraph.replace("\n", " ").strip()
+            
+    return ""
+
+@app.post("/full_search")
+def full_search_endpoint(request: SearchRequest):
+    query = request.query
+    k = request.k
+    if not VOCABULARY or not DOCUMENT_VECTORS:
+        return {"error": "El índice del corpus no está inicializado."}
+    
+    # Procesar query
     q_clean = lexical_fn(query)
     q_tokens = tokenize_fn(q_clean)
+    query_phrase = " ".join(q_tokens)
     q_tokens = remove_stopwords_fn(q_tokens)
     q_tokens = meaningful_tokens_fn(q_tokens)
+    q_tokens = stem_tokens_fn(q_tokens)
 
-    # Procesar documentos
-    processed_docs = []
-    for doc in documents:
-        doc_id = doc.get("id")
-        tokens = doc.get("tokens", [])
+    # TF-IDF de la query usando vocabulario e IDF GLOBAL
+    q_tfidf = compute_tfidf_fn(q_tokens, VOCABULARY, IDF)
+    q_vector = vectorize_document_fn(q_tfidf, VOCABULARY)
 
-        if not isinstance(doc_id, str) or not isinstance(tokens, list):
+    # Comparar con documentos del corpus
+    ranking = {}
+    for doc_id, doc_vector in DOCUMENT_VECTORS.items():
+        sim = cosine_similarity_fn(q_vector, doc_vector)
+        
+        if sim > 0:
+            ranking[doc_id] = sim
+    
+    # Ordenar resultados
+    ranking = dict(
+        sorted(ranking.items(), key = lambda x: x[1], reverse = True)
+    )
+
+    ranking = dict(list(ranking.items())[:k])
+
+    if ranking:
+        max_score = max(ranking.values())
+        if max_score > 0:
+            ranking = {
+                doc_id: score / max_score
+                for doc_id, score in ranking.items()
+            }
+    results = []
+    for doc_id, score in ranking.items():
+        if score <= 0:
             continue
 
-        tokens = [t.lower() for t in tokens]
-        tokens = remove_stopwords_fn(tokens)
-        tokens = meaningful_tokens_fn(tokens)
-        tokens = stem_tokens_fn(tokens)
+        doc = next(d for d in CORPUS_DOCUMENTS if d["id"] == doc_id)
+        snippet = extract_snippet_phrase(doc["text"], query_phrase)
 
-        processed_docs.append({
-            "id": doc_id,
-            "tokens": tokens
+        if not snippet:
+            snippet = extract_snippet_tokens(doc["text"], q_tokens)
+
+        results.append({
+            "doc_id": doc_id,
+            "doc_name": doc["name"],
+            "score": score,
+            "snippet": snippet
         })
-    
-    # Construir vocabulario
-    vocab = set(q_tokens)
-    for doc in processed_docs:
-        vocab.update(doc["tokens"])
-    vocab = sorted(list(vocab))
-
-    # TF documentos
-    docs_tf = {
-        doc["id"]: compute_tf_fn(doc["tokens"], vocab)
-        for doc in processed_docs
-    }
-
-    # TF consulta
-    q_tf = compute_tf_fn(q_tokens, vocab)
-
-    # IDF global
-    all_token_lists = [doc["tokens"] for doc in processed_docs]
-    all_token_lists.append(q_tokens)
-    idf = compute_idf_fn(all_token_lists, vocab)
-
-    # TF-IDF documentos
-    docs_tfidf = {
-        doc_id: compute_tfidf_fn(tf, vocab, idf)
-        for doc_id, tf in docs_tf.items()
-    }
-
-    # TF-IDF consulta
-    q_tfidf = compute_tfidf_fn(q_tf, vocab, idf)
-
-    # Vectorizar
-    docs_vectors = {
-        doc_id: vectorize_document_fn(tfidf, vocab)
-        for doc_id, tfidf in docs_tfidf.items()
-    }
-    q_vector = vectorize_document_fn(q_tfidf, vocab)
-
-    # Similitud
-    ranking = {
-        doc_id: cosine_similarity_fn(q_vector, vec)
-        for doc_id, vec in docs_vectors.items()
-    }
-
-    # Ordenar resultados
-    ranking = dict(sorted(ranking.items(), key = lambda x: x[1], reverse = True))
 
     return {
-        "query_processed": q_tokens,
-        "vocabulary": vocab,
-        "ranking": ranking
+        "query": query,
+        "results": results 
+    }
+
+@app.get("/status")
+def status_endpoint():
+    return {
+        "indexed": bool(DOCUMENT_VECTORS),
+        "num_documents": len(CORPUS_DOCUMENTS),
+        "vocabulary_size": len(VOCABULARY),
+        "vector_dimension": len(VOCABULARY)
+    }
+
+@app.get("/load_docs")
+def load_docs_endpoint():
+    docs = load_docs_fn()
+    return {"documents": docs}
+
+@app.get("/download_gutenberg")
+def download_gutenberg_endpoint():
+    download_gutenberg_docs()
+    return {
+        "status": "ok",
+        "message": "Descarga de Project Gutenberg completada."
+    }
+
+@app.get("/download_wikipedia")
+def download_wikipedia_endpoint():
+    download_wikipedia_docs()
+    return {
+        "status": "ok",
+        "message": "Artículos de wikipedia descargados."
+    }
+
+@app.get("/download_wikipedia_html")
+def download_wikipedia_html_endpoint():
+    download_wikipedia_docs_html()
+    return {
+        "status": "ok",
+        "message": "Artículo de wikipedia descargados vía html"
+    }
+
+@app.get("/reindex")
+def reindex_endpoint():
+    initialize_corpus_index()
+    return {
+        "status": "ok",
+        "message": "Índice global del corpus reconstruido."
     }
